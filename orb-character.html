@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glowing Orb Character Test</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.158.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.158.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000);
+        document.body.appendChild(renderer.domElement);
+
+        // Create orb geometry
+        const geometry = new THREE.SphereGeometry(1, 64, 64);
+
+        // Shader material for glowing and swirling effect
+        const material = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0.0 },
+                color: { value: new THREE.Color(0x00ffff) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 color;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+
+                void main() {
+                    // Swirling pattern using noise-like sin waves
+                    float swirl = sin(vUv.x * 10.0 + time * 2.0) * cos(vUv.y * 10.0 + time * 1.5);
+                    swirl += sin(vUv.y * 15.0 + time * 3.0) * 0.5;
+                    
+                    // Glowing effect: radial gradient with swirl modulation
+                    float glow = 1.0 - length(vUv - 0.5) * 2.0;
+                    glow = max(0.0, glow + swirl * 0.3);
+                    glow = pow(glow, 2.0); // Enhance glow
+                    
+                    gl_FragColor = vec4(color * glow, glow * 0.8);
+                }
+            `,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+
+        const orb = new THREE.Mesh(geometry, material);
+        scene.add(orb);
+
+        // Add point light for extra glow
+        const pointLight = new THREE.PointLight(0x00ffff, 2, 100);
+        pointLight.position.set(0, 0, 0);
+        scene.add(pointLight);
+
+        // Ambient light for subtle fill
+        const ambientLight = new THREE.AmbientLight(0x004444, 0.2);
+        scene.add(ambientLight);
+
+        camera.position.z = 5;
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Rotate the orb for dynamic feel
+            orb.rotation.y += 0.01;
+            orb.rotation.x += 0.005;
+
+            // Update shader time for swirling
+            material.uniforms.time.value += 0.05;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
