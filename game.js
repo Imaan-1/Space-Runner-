@@ -143,7 +143,7 @@ const characterOrder = ["rocket", "asteroid", "planet", "orb", "hypercube"];
 
 // --- Level State Management (NO CHANGES) ---
 let selectedLevel = 1;
-const LEVEL_UNLOCK_SCORES = { 1: 1000, 2: 1000, 3: Infinity };
+const LEVEL_UNLOCK_SCORES = { 1: 500, 2: 1000, 3: Infinity };
 let unlockedLevels = { 1: true, 2: false, 3: true };
 let highScores = { 1: 0, 2: 0, 3: 0 };
 
@@ -1237,7 +1237,6 @@ function updateStarCounterHUD() {
   }
 }
 // --- END NEW: Function to update the Star Counter HUD ---
-
 function initGame() {
   function spawnShootingStar() {
     // Geometry is a thin cylinder or box
@@ -1331,6 +1330,187 @@ function initGame() {
   const collectibleStars = [];
   // --- END NEW: Collectible Star Array ---
 
+  // MINIMAP VARIABLES
+  const minimapCanvas = document.getElementById('minimap');
+  const minimapCtx = minimapCanvas.getContext('2d');
+  minimapCanvas.width = 150;
+  minimapCanvas.height = 150;
+  
+  const minimap = {
+    width: 150,
+    height: 150,
+    scale: 0.8, // Adjust this to change zoom level
+    playerHistory: [], // Store player positions for trail
+    maxHistory: 20 // Number of positions to keep for trail
+  };
+
+  function renderMinimap() {
+    if (!player || !minimapCtx) return;
+    
+    // Clear minimap with transparent background
+    minimapCtx.clearRect(0, 0, minimap.width, minimap.height);
+    
+    // Draw background
+    minimapCtx.fillStyle = 'rgba(10, 10, 30, 0.8)';
+    minimapCtx.fillRect(0, 0, minimap.width, minimap.height);
+    
+    // Draw grid
+    minimapCtx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    minimapCtx.lineWidth = 1;
+    minimapCtx.beginPath();
+    for (let x = 0; x <= minimap.width; x += 15) {
+        minimapCtx.moveTo(x, 0);
+        minimapCtx.lineTo(x, minimap.height);
+    }
+    for (let y = 0; y <= minimap.height; y += 15) {
+        minimapCtx.moveTo(0, y);
+        minimapCtx.lineTo(minimap.width, y);
+    }
+    minimapCtx.stroke();
+    
+    // Center of minimap (player position)
+    const centerX = minimap.width / 2;
+    const centerY = minimap.height / 2;
+    
+    // Get the 3 closest obstacles
+    const closestObstacles = obstacles
+        .filter(obstacle => {
+            return obstacle.group && 
+                   obstacle.group.position && 
+                   (obstacle.isActive === undefined || obstacle.isActive === true);
+        })
+        .map(obstacle => {
+            // Calculate relative position to player
+            const relX = obstacle.group.position.x - player.position.x;
+            const relZ = obstacle.group.position.z - player.position.z;
+            const distance = Math.sqrt(relX * relX + relZ * relZ);
+            return { 
+                obstacle, 
+                distance, 
+                relX, 
+                relZ,
+                type: obstacle.constructor.name
+            };
+        })
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, 3);
+    
+    // Draw the 3 closest obstacles at their ACTUAL relative positions
+    closestObstacles.forEach(({ obstacle, relX, relZ, type }, index) => {
+        // Convert relative position to minimap coordinates
+        const obstacleX = centerX + relX * minimap.scale;
+        const obstacleY = centerY + relZ * minimap.scale;
+        
+        // Check if obstacle is within minimap bounds
+        const isInBounds = 
+            obstacleX >= 0 && obstacleX <= minimap.width &&
+            obstacleY >= 0 && obstacleY <= minimap.height;
+        
+        if (!isInBounds) return;
+        
+        // Color assignment based on type
+        let color = '#ff4444';
+        switch (type) {
+            case 'SatelliteWreckage':
+                color = '#ffaa00';
+                break;
+            case 'UFO':
+                color = '#00ff00';
+                break;
+            case 'EnergyField':
+                color = '#00ffff';
+                break;
+            case 'AsteroidField':
+                color = '#888888';
+                break;
+            case 'PlasmaShots':
+                color = '#ff4500';
+                break;
+            case 'QuantumGate':
+                color = '#00ff7f';
+                break;
+            default:
+                color = '#ff4444';
+        }
+        
+        // Draw obstacle dot at its actual relative position
+        minimapCtx.fillStyle = color;
+        minimapCtx.beginPath();
+        minimapCtx.arc(obstacleX, obstacleY, 5, 0, Math.PI * 2);
+        minimapCtx.fill();
+        
+        // Draw obstacle number
+        minimapCtx.fillStyle = '#ffffff';
+        minimapCtx.font = 'bold 12px Arial';
+        minimapCtx.textAlign = 'center';
+        minimapCtx.textBaseline = 'middle';
+        minimapCtx.fillText((index + 1).toString(), obstacleX, obstacleY);
+    });
+    
+    // Update player history for trail
+    minimap.playerHistory.push({
+        x: 0,
+        z: 0
+    });
+    
+    // Keep only recent positions
+    if (minimap.playerHistory.length > minimap.maxHistory) {
+        minimap.playerHistory.shift();
+    }
+    
+    // Draw player trail (showing movement path) - REMOVED the upward trail
+    if (minimap.playerHistory.length > 1) {
+        minimapCtx.strokeStyle = 'rgba(255, 105, 180, 0.4)';
+        minimapCtx.lineWidth = 2;
+        minimapCtx.beginPath();
+        
+        // Draw trail as dots behind player position
+        minimap.playerHistory.forEach((pos, index) => {
+            if (index > 0) { // Skip the first position (current position)
+                const trailX = centerX;
+                const trailY = centerY + (index * 2); // Trail goes down instead of up
+                minimapCtx.lineTo(trailX, trailY);
+            }
+        });
+        
+        minimapCtx.stroke();
+    }
+    
+    // Draw player as pink dot in center (NO direction line)
+    minimapCtx.fillStyle = '#ff00ff';
+    minimapCtx.beginPath();
+    minimapCtx.arc(centerX, centerY, 6, 0, Math.PI * 2);
+    minimapCtx.fill();
+    
+    // Add subtle glow to player dot (optional)
+    minimapCtx.shadowColor = '#ff00ff';
+    minimapCtx.shadowBlur = 8;
+    minimapCtx.fill();
+    minimapCtx.shadowBlur = 0;
+    
+    // Draw border
+    minimapCtx.strokeStyle = '#ff00ff';
+    minimapCtx.lineWidth = 2;
+    minimapCtx.strokeRect(0, 0, minimap.width, minimap.height);
+    
+    // Draw compass indicators (keeping these but they're just text)
+    minimapCtx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    minimapCtx.font = '10px Arial';
+    minimapCtx.textAlign = 'center';
+    minimapCtx.fillText('N', centerX, 12);
+    minimapCtx.fillText('S', centerX, minimap.height - 5);
+    minimapCtx.textAlign = 'left';
+    minimapCtx.fillText('W', 5, centerY + 3);
+    minimapCtx.textAlign = 'right';
+    minimapCtx.fillText('E', minimap.width - 5, centerY + 3);
+    
+    // Draw info
+    minimapCtx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    minimapCtx.font = '9px Arial';
+    minimapCtx.textAlign = 'center';
+    //minimapCtx.fillText(`OBSTACLES: ${closestObstacles.length}/3`, centerX, minimap.height - 15);
+}
+
 
   // --- Classes (Box, Player, AsteroidField, UFO, EnergyField, PlasmaShots, QuantumGate) ---
   class Box extends THREE.Mesh {
@@ -1422,6 +1602,7 @@ function initGame() {
       }
     }
   }
+ 
   class AsteroidField {
     constructor(p) {
       this.group = new THREE.Group();
@@ -1516,7 +1697,8 @@ function initGame() {
       this.group.rotation.y = t * 0.5;
     }
   }
-  class EnergyField {
+
+    class EnergyField {
     constructor(p) {
       this.group = new THREE.Group();
       p.y = -1.75;
@@ -1553,6 +1735,7 @@ function initGame() {
       });
     }
   }
+
   class PlasmaShots {
     constructor(p) {
       this.group = new THREE.Group();
@@ -1584,6 +1767,7 @@ function initGame() {
       });
     }
   }
+ 
   class QuantumGate {
     constructor(p) {
       this.group = new THREE.Group();
@@ -1617,14 +1801,581 @@ function initGame() {
         g.material.emissiveIntensity = 0.3 + Math.sin(t * 3) * 0.2;
       });
     }
-  }
+}
+
+// NEW STYLED OBSTACLES FOR LEVEL 1
+
+
+class SatelliteWreckage {
+    constructor(p) {
+        this.group = new THREE.Group();
+        p.y = -1.75;
+        this.group.position.copy(p);
+        scene.add(this.group);
+        this.colliders = [];
+
+        // Movement properties
+        this.speed = 0.08 + Math.random() * 0.04; // Speed toward player
+        this.rotationSpeed = 0.005 + Math.random() * 0.005; // Tumbling speed
+        this.isActive = true;
+
+        // Create satellite parts with different geometries
+        this.createSatelliteParts();
+        
+        // Add debris field with particle system
+        this.createDebrisField();
+        
+        // Add electrical arcs between pieces
+        this.createElectricalArcs();
+        
+        // Add flickering lights
+        this.createEmergencyLights();
+
+        console.log("SatelliteWreckage spawned - moving toward player!");
+    }
+
+    createSatelliteParts() {
+        // Main satellite body (damaged cylinder)
+        const bodyGeometry = new THREE.CylinderGeometry(0.8, 0.6, 2, 8);
+        this.damageGeometry(bodyGeometry, 0.3);
+        
+        const bodyMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0.0 },
+                baseColor: { value: new THREE.Color(0x2a4b8d) },
+                emissiveColor: { value: new THREE.Color(0x4a90e2) },
+                damageColor: { value: new THREE.Color(0xff6b35) },
+                noiseScale: { value: 5.0 },
+                sparkIntensity: { value: 1.0 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                uniform float time;
+                
+                void main() {
+                    vUv = uv;
+                    vPosition = position;
+                    vNormal = normal;
+                    
+                    // Add subtle wobble to simulate damage
+                    float damageWave = sin(time * 2.0 + position.x * 3.0) * 0.1;
+                    vec3 wobblePosition = position + normal * damageWave * 0.1;
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(wobblePosition, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 baseColor;
+                uniform vec3 emissiveColor;
+                uniform vec3 damageColor;
+                uniform float noiseScale;
+                uniform float sparkIntensity;
+                varying vec2 vUv;
+                varying vec3 vPosition;
+                varying vec3 vNormal;
+                
+                // Simple noise function for damage patterns
+                float hash(vec2 p) {
+                    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+                }
+                
+                float noise(vec2 p) {
+                    vec2 i = floor(p);
+                    vec2 f = fract(p);
+                    f = f * f * (3.0 - 2.0 * f);
+                    
+                    float a = hash(i);
+                    float b = hash(i + vec2(1.0, 0.0));
+                    float c = hash(i + vec2(0.0, 1.0));
+                    float d = hash(i + vec2(1.0, 1.0));
+                    
+                    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+                }
+                
+                void main() {
+                    // Base metal with scratches
+                    vec2 uv = vUv * noiseScale;
+                    float metalNoise = noise(uv + time * 0.5);
+                    vec3 finalColor = mix(baseColor, baseColor * 0.7, metalNoise);
+                    
+                    // Damage patterns
+                    float damage = noise(vUv * 8.0 + time * 0.2);
+                    damage = pow(damage, 3.0);
+                    finalColor = mix(finalColor, damageColor, damage * 0.3);
+                    
+                    // Spark effects at damaged edges
+                    float edge = dot(vNormal, vec3(0.0, 1.0, 0.0));
+                    float spark = sin(time * 10.0 + vPosition.x * 20.0) * 0.5 + 0.5;
+                    spark *= pow(1.0 - abs(edge), 4.0);
+                    spark *= damage;
+                    
+                    finalColor += emissiveColor * spark * sparkIntensity;
+                    
+                    // Flickering emissive from broken electronics
+                    float flicker = hash(vec2(time * 15.0, vUv.x));
+                    flicker = step(0.7, flicker) * damage;
+                    finalColor += vec3(1.0, 0.8, 0.2) * flicker * 0.5;
+                    
+                    gl_FragColor = vec4(finalColor, 1.0);
+                }
+            `
+        });
+
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        body.castShadow = true;
+        this.group.add(body);
+        this.colliders.push(body);
+        body.userData.shaderMaterial = bodyMaterial;
+
+        // Solar panel (broken)
+        const panelGeometry = new THREE.PlaneGeometry(2, 1.5);
+        const panelMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0.0 },
+                panelColor: { value: new THREE.Color(0x1a3a6d) },
+                solarColor: { value: new THREE.Color(0xffd700) },
+                broken: { value: 0.8 }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vWorldPosition;
+                uniform float time;
+                
+                void main() {
+                    vUv = uv;
+                    vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+                    vWorldPosition = worldPosition.xyz;
+                    
+                    // Panel wobble effect
+                    float wave = sin(time * 3.0 + worldPosition.x * 2.0) * 0.2;
+                    vec3 wobblePos = position + normal * wave * 0.1;
+                    
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(wobblePos, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec3 panelColor;
+                uniform vec3 solarColor;
+                uniform float broken;
+                varying vec2 vUv;
+                varying vec3 vWorldPosition;
+                
+                void main() {
+                    // Crack patterns
+                    float cracks = 0.0;
+                    for(float i = 0.0; i < 5.0; i++) {
+                        float crack = sin(vUv.x * 30.0 + i * 10.0 + time) * 0.5 + 0.5;
+                        crack = 1.0 - smoothstep(0.4, 0.6, crack);
+                        cracks += crack * 0.2;
+                    }
+                    
+                    // Solar cell grid with broken parts
+                    vec2 grid = fract(vUv * vec2(8.0, 6.0));
+                    float cell = step(0.1, grid.x) * step(0.1, grid.y) * 
+                                 step(grid.x, 0.9) * step(grid.y, 0.9);
+                    
+                    // Random broken cells
+                    float cellHash = fract(sin(dot(floor(vUv * vec2(8.0, 6.0)), vec2(12.9898, 78.233))) * 43758.5453);
+                    float isBroken = step(broken, cellHash);
+                    
+                    vec3 color = panelColor;
+                    color = mix(color, solarColor, cell * (1.0 - isBroken) * 0.3);
+                    color = mix(color, vec3(0.1), cracks);
+                    
+                    // Flickering broken cells
+                    float flicker = sin(time * 20.0 + vWorldPosition.x * 10.0) * 0.5 + 0.5;
+                    color += solarColor * isBroken * flicker * 0.5;
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `,
+            side: THREE.DoubleSide
+        });
+
+        const panel = new THREE.Mesh(panelGeometry, panelMaterial);
+        panel.position.set(1.5, 0.5, 0);
+        panel.rotation.y = Math.PI / 2;
+        panel.castShadow = true;
+        this.group.add(panel);
+        this.colliders.push(panel);
+        panel.userData.shaderMaterial = panelMaterial;
+
+        // Antenna (bent)
+        const antennaGeometry = new THREE.CylinderGeometry(0.05, 0.05, 1.5, 8);
+        const antenna = new THREE.Mesh(antennaGeometry, new THREE.MeshStandardMaterial({ 
+            color: 0x888888,
+            emissive: 0x444444 
+        }));
+        antenna.position.set(-0.8, 1.2, 0);
+        antenna.rotation.z = Math.PI / 6;
+        this.group.add(antenna);
+        this.colliders.push(antenna);
+
+        // Fuel tank (leaking)
+        const tankGeometry = new THREE.SphereGeometry(0.4, 16, 16);
+        const tankMaterial = new THREE.ShaderMaterial({
+            uniforms: {
+                time: { value: 0.0 },
+                leakPosition: { value: new THREE.Vector2(0.7, 0.5) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                uniform float time;
+                
+                void main() {
+                    vUv = uv;
+                    vNormal = normal;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform float time;
+                uniform vec2 leakPosition;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                
+                void main() {
+                    vec3 baseColor = vec3(0.3, 0.3, 0.4);
+                    
+                    // Leaking fuel effect
+                    float leakDist = distance(vUv, leakPosition);
+                    float leak = 1.0 - smoothstep(0.0, 0.3, leakDist);
+                    leak *= sin(time * 5.0) * 0.5 + 0.5;
+                    
+                    // Frost/crystal formation from leaking fuel
+                    float frost = sin(vUv.x * 20.0 + time * 2.0) * 0.5 + 0.5;
+                    frost *= sin(vUv.y * 15.0 + time * 3.0) * 0.5 + 0.5;
+                    frost = pow(frost, 3.0) * leak;
+                    
+                    vec3 color = mix(baseColor, vec3(0.8, 0.9, 1.0), frost);
+                    color = mix(color, vec3(0.1, 0.2, 0.8), leak * 0.3);
+                    
+                    gl_FragColor = vec4(color, 1.0);
+                }
+            `
+        });
+
+        const tank = new THREE.Mesh(tankGeometry, tankMaterial);
+        tank.position.set(0, -0.5, 0.8);
+        this.group.add(tank);
+        this.colliders.push(tank);
+        tank.userData.shaderMaterial = tankMaterial;
+    }
+
+    createDebrisField() {
+        const debrisCount = 15;
+        this.debrisParticles = [];
+
+        for (let i = 0; i < debrisCount; i++) {
+            const size = Math.random() * 0.2 + 0.05;
+            const geometry = new THREE.OctahedronGeometry(size);
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0.0 },
+                    baseColor: { value: new THREE.Color(0x4a5568) },
+                    glowColor: { value: new THREE.Color(0x00ffff) }
+                },
+
+                vertexShader: `
+                    uniform float time;
+                    attribute float speed;
+                    attribute float offset;
+                    varying vec3 vPosition;
+                    
+                    // Proper rotation matrix function
+                    mat4 rotationMatrix(vec3 axis, float angle) {
+                        axis = normalize(axis);
+                        float s = sin(angle);
+                        float c = cos(angle);
+                        float oc = 1.0 - c;
+                        
+                        return mat4(oc * axis.x * axis.x + c,        oc * axis.x * axis.y - axis.z * s, oc * axis.z * axis.x + axis.y * s, 0.0,
+                                oc * axis.x * axis.y + axis.z * s, oc * axis.y * axis.y + c,        oc * axis.y * axis.z - axis.x * s, 0.0,
+                                oc * axis.z * axis.x - axis.y * s, oc * axis.y * axis.z + axis.x * s, oc * axis.z * axis.z + c,        0.0,
+                                0.0,                               0.0,                               0.0,                               1.0);
+                    }
+                    
+                    void main() {
+                        vPosition = position;
+                        // Debris tumble rotation
+                        float tumble = time * speed + offset;
+                        
+                        // Create rotation axis and angle
+                        vec3 rotationAxis = normalize(vec3(sin(tumble), cos(tumble * 1.3), sin(tumble * 0.7)));
+                        float rotationAngle = tumble;
+                        
+                        mat4 rotation = rotationMatrix(rotationAxis, rotationAngle);
+                        vec3 rotatedPos = (rotation * vec4(position, 1.0)).xyz;
+                        
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(rotatedPos, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 baseColor;
+                    uniform vec3 glowColor;
+                    uniform float time;
+                    varying vec3 vPosition;
+                    
+                    void main() {
+                        // Metallic debris with occasional glow
+                        float pulse = sin(time * 3.0 + vPosition.x * 10.0) * 0.5 + 0.5;
+                        pulse = pow(pulse, 4.0);
+                        
+                        vec3 color = mix(baseColor, glowColor, pulse * 0.3);
+                        
+                        // Sparkle effect
+                        float sparkle = sin(time * 20.0 + vPosition.y * 30.0) * 0.5 + 0.5;
+                        sparkle *= sin(time * 15.0 + vPosition.z * 25.0) * 0.5 + 0.5;
+                        sparkle = step(0.8, sparkle);
+                        
+                        color += glowColor * sparkle * 0.5;
+                        
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `
+            });
+
+            const debris = new THREE.Mesh(geometry, material);
+            
+            // Set custom attributes for animation
+            debris.userData.speed = Math.random() * 2 + 1;
+            debris.userData.offset = Math.random() * Math.PI * 2;
+            debris.userData.radius = Math.random() * 3 + 1;
+            debris.userData.angle = Math.random() * Math.PI * 2;
+            
+            // Position debris in a cloud around the satellite
+            const angle = Math.random() * Math.PI * 2;
+            const radius = Math.random() * 3 + 1;
+            const height = (Math.random() - 0.5) * 2;
+            debris.position.set(
+                Math.cos(angle) * radius,
+                height,
+                Math.sin(angle) * radius
+            );
+
+            this.group.add(debris);
+            this.debrisParticles.push(debris);
+            debris.userData.shaderMaterial = material;
+        }
+    }
+
+    createElectricalArcs() {
+        this.arcs = [];
+        const arcCount = 4;
+
+        for (let i = 0; i < arcCount; i++) {
+            const points = [];
+            const segments = 8;
+            
+            for (let j = 0; j <= segments; j++) {
+                const t = j / segments;
+                const x = (Math.random() - 0.5) * 2;
+                const y = (Math.random() - 0.5) * 2;
+                const z = (Math.random() - 0.5) * 2;
+                points.push(new THREE.Vector3(x, y, z));
+            }
+
+            const curve = new THREE.CatmullRomCurve3(points);
+            const geometry = new THREE.TubeGeometry(curve, 20, 0.02, 8, false);
+            
+            const material = new THREE.ShaderMaterial({
+                uniforms: {
+                    time: { value: 0.0 },
+                    arcColor: { value: new THREE.Color(0x00ffff) },
+                    arcSpeed: { value: Math.random() * 3 + 2 }
+                },
+                vertexShader: `
+                    uniform float time;
+                    uniform float arcSpeed;
+                    varying float vAlpha;
+                    
+                    void main() {
+                        // Traveling arc effect
+                        float travel = mod(time * arcSpeed, 1.0);
+                        float distFromStart = position.y; // Using y as distance proxy
+                        float arcWave = sin((distFromStart - travel) * 20.0) * 0.5 + 0.5;
+                        vAlpha = arcWave;
+                        
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 arcColor;
+                    varying float vAlpha;
+                    
+                    void main() {
+                        vec3 color = arcColor * vAlpha;
+                        gl_FragColor = vec4(color, vAlpha * 0.8);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending
+            });
+
+            const arc = new THREE.Mesh(geometry, material);
+            arc.position.set(
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2,
+                (Math.random() - 0.5) * 2
+            );
+            
+            this.group.add(arc);
+            this.arcs.push(arc);
+            arc.userData.shaderMaterial = material;
+        }
+    }
+
+    createEmergencyLights() {
+        this.lights = [];
+        const lightCount = 3;
+
+        for (let i = 0; i < lightCount; i++) {
+            const light = new THREE.PointLight(0xff0000, 1, 3);
+            light.position.set(
+                (Math.random() - 0.5) * 3,
+                (Math.random() - 0.5) * 2 + 1,
+                (Math.random() - 0.5) * 3
+            );
+            
+            this.group.add(light);
+            this.lights.push(light);
+        }
+    }
+
+    damageGeometry(geometry, intensity) {
+        const position = geometry.attributes.position;
+        for (let i = 0; i < position.count; i++) {
+            const x = position.getX(i);
+            const y = position.getY(i);
+            const z = position.getZ(i);
+            
+            // Random damage displacement
+            const damage = (Math.random() - 0.5) * intensity;
+            position.setX(i, x + damage);
+            position.setY(i, y + damage * 0.5);
+            position.setZ(i, z + damage);
+        }
+        position.needsUpdate = true;
+        geometry.computeVertexNormals();
+    }
+
+    update() {
+        if (!this.isActive) return;
+
+        const t = Date.now() * 0.001;
+
+        // MOVE TOWARD PLAYER (SCREEN)
+        this.group.position.z += this.speed;
+
+        // Main satellite tumbling
+        this.group.rotation.x += this.rotationSpeed;
+        this.group.rotation.y += this.rotationSpeed * 1.2;
+        this.group.rotation.z += this.rotationSpeed * 0.8;
+
+        // Update shader uniforms
+        this.group.traverse((child) => {
+            if (child.userData && child.userData.shaderMaterial) {
+                child.userData.shaderMaterial.uniforms.time.value = t;
+            }
+        });
+
+        // Animate debris particles
+        this.debrisParticles.forEach((debris, i) => {
+            debris.userData.angle += 0.02 * debris.userData.speed;
+            const radius = debris.userData.radius;
+            const height = Math.sin(t * debris.userData.speed + i) * 0.5;
+            
+            debris.position.set(
+                Math.cos(debris.userData.angle) * radius,
+                height,
+                Math.sin(debris.userData.angle) * radius
+            );
+        });
+
+        // Animate emergency lights
+        this.lights.forEach((light, i) => {
+            const flicker = Math.sin(t * 10 + i * 2) * 0.5 + 0.5;
+            light.intensity = flicker * 2;
+        });
+
+        // Gentle floating motion
+        this.group.position.y = Math.sin(t * 0.5) * 0.2;
+
+        // Remove if too far behind player (cleanup)
+        if (this.group.position.z > player.position.z + 50) {
+            this.remove();
+        }
+    }
+
+    remove() {
+        // Clean up the satellite from the scene
+        scene.remove(this.group);
+        this.isActive = false;
+        
+        // Find and remove from obstacles array
+        const index = obstacles.indexOf(this);
+        if (index > -1) {
+            obstacles.splice(index, 1);
+        }
+    }
+
+    // Check collision with player
+    // In the SatelliteWreckage class, replace the checkPlayerCollision method:
+
+    checkPlayerCollision() {
+        if (!this.isActive || !player) return false;
+
+        // Get world position and bounding box for player
+        const playerBox = new THREE.Box3().setFromObject(player.colliderBox);
+        
+        for (const collider of this.colliders) {
+            // Get world position and bounding box for this collider
+            const colliderBox = new THREE.Box3().setFromObject(collider);
+            
+            // Debug: Visualize collision boxes (remove in production)
+            // const helper1 = new THREE.Box3Helper(playerBox, 0xff0000);
+            // const helper2 = new THREE.Box3Helper(colliderBox, 0x00ff00);
+            // scene.add(helper1);
+            // scene.add(helper2);
+            // setTimeout(() => {
+            //     scene.remove(helper1);
+            //     scene.remove(helper2);
+            // }, 100);
+            
+            if (playerBox.intersectsBox(colliderBox)) {
+                console.log("Collision detected with satellite wreckage!");
+                return true;
+            }
+        }
+        return false;
+    }
+    // Add this method to the SatelliteWreckage class
+    isTooCloseToPlayer() {
+        if (!player) return false;
+        const distance = Math.abs(this.group.position.z - player.position.z);
+        return distance < 15; // Minimum safe distance
+    }
+}
+
+
+
+
+
+
 
   const obstacleTypes = [
     AsteroidField,
     PlasmaShots,
+    SatelliteWreckage, 
     EnergyField,
     UFO,
     QuantumGate,
+   
   ];
 
   // --- MODIFIED: Create, but don't add to scene yet ---
@@ -1704,6 +2455,9 @@ function initGame() {
 
     // Reset run-only quest progress
     resetQuestProgressForRun();
+
+    // Reset minimap history
+    minimap.playerHistory = [];
 
     // --- NEW: Shooting Star Setup ---
     if (shootingStarInterval) clearInterval(shootingStarInterval);
@@ -1853,9 +2607,9 @@ function initGame() {
   function spawnObstacle() {
     let availableObstacles;
     if (selectedLevel === 1) {
-      availableObstacles = obstacleTypes.slice(0, 2);
+       availableObstacles = obstacleTypes.slice(0, 3);
     } else if (selectedLevel === 2) {
-      availableObstacles = obstacleTypes.slice(0, 3);
+      availableObstacles = obstacleTypes.slice(0, 4);
     } else {
       const sliceEnd = Math.min(
         gameState.internalLevel + 1,
@@ -2110,6 +2864,12 @@ function initGame() {
     document.getElementById("gameOverScreen").style.display = "none";
     document.getElementById("gameScreen").classList.add("hidden"); // Use class list for consistency
 
+    // Clear minimap
+    if (minimapCtx) {
+        minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+    }
+    minimap.playerHistory = [];
+
     // Show the primary menu screen
     showScreen("levelSelectionScreen");
 
@@ -2120,12 +2880,16 @@ function initGame() {
   window.addEventListener("keydown", (e) => {
     switch (e.code) {
       case "KeyA":
+      case "ArrowLeft":
         keys.a.pressed = true;
         break;
       case "KeyD":
+      case "ArrowRight":
         keys.d.pressed = true;
         break;
       case "Space":
+      case "ArrowUp": //up for jumping as well
+
         if (player && player.onGround) {
           playSound("jump");
           player.velocity.y = 0.12;
@@ -2144,8 +2908,10 @@ function initGame() {
   window.addEventListener("keyup", (e) => {
     switch (e.code) {
       case "KeyA":
+      case "ArrowLeft":
         keys.a.pressed = false;
       case "KeyD":
+      case "ArrowRight":
         keys.d.pressed = false;
     }
   });
@@ -2354,13 +3120,38 @@ function initGame() {
       spawnObstacle();
     }
 
-    obstacles.forEach((o) => {
-      o.update();
-      o.colliders.forEach((c) => {
-        if (boxCollision({ box1: player.colliderBox, box2: c }))
-          triggerGameOver("You crashed into an obstacle!");
-      });
-    });
+obstacles.forEach((o) => {
+    o.update();
+    
+    // Skip collision check if game is over
+    if (gameState.isGameOver) return;
+    
+    // For SatelliteWreckage, use a simple distance check that accounts for its movement
+    if (o instanceof SatelliteWreckage) {
+        // Only check collision if satellite is in front of player (moving toward player)
+        if (o.group.position.z < player.position.z + 10) {
+            const distance = o.group.position.distanceTo(player.position);
+            // Use a reasonable collision distance that matches the satellite's size
+            if (distance < 4) {
+                console.log("Satellite collision! Distance:", distance);
+                triggerGameOver("You crashed into satellite wreckage!");
+                return;
+            }
+        }
+    } else {
+        // For other obstacles, use the standard collision check
+        let collisionDetected = false;
+        o.colliders.forEach((c) => {
+            if (boxCollision({ box1: player.colliderBox, box2: c })) {
+                collisionDetected = true;
+            }
+        });
+        if (collisionDetected) {
+            triggerGameOver("You crashed into an obstacle!");
+            return;
+        }
+    }
+});
     grounds.forEach((g) => {
       if (camera.position.z < g.position.z - g.depth / 2)
         g.position.z -= grounds.length * g.depth;
@@ -2578,6 +3369,8 @@ function initGame() {
       }
     }
 
+    // Render minimap
+    renderMinimap();
     renderer.render(scene, camera);
   }
 }
