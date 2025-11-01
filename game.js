@@ -398,8 +398,6 @@ function showPurchaseNotification(title, message, icon) {
 
   // Re-assign the click handler every time the modal is shown
   // to ensure a fresh event listener that only closes the current instance.
-  // Note: For a clean implementation, you might remove the event listener 
-  // before adding a new one, but removing and re-adding is sufficient.
   // In this case, we remove the handler *after* it runs to keep it clean.
   closeBtn.removeEventListener("click", closeHandler); 
   closeBtn.addEventListener("click", closeHandler);
@@ -682,14 +680,15 @@ function setupCharacterSelector() {
 
     // 🛠️ Check for equipped skin override
     let skinOverride = null;
-    if (equippedSkin && characterObj.createModel === createHyperCubeModel) {
-        const skinItem = SHOP_ITEMS.find(item => item.id === equippedSkin && item.basedOn === selectedObjectId);
-        if (skinItem) {
-            skinOverride = skinItem;
-        }
+    // Find the equipped skin object
+    const equippedItem = equippedSkin ? SHOP_ITEMS.find(item => item.id === equippedSkin) : null;
+
+    if (equippedItem && equippedItem.basedOn === selectedObjectId) {
+        skinOverride = equippedItem;
     }
 
-    currentModel = characterObj.createModel(skinOverride);
+    currentModel = characterObj.createModel(skinOverride); // Pass override to model creator
+
     currentModel.rotation.x = 0;
     currentModel.position.set(0, 0, 0);
     scene.add(currentModel);
@@ -716,7 +715,15 @@ function setupCharacterSelector() {
   // MODIFIED FUNCTION
   updateCharacterSelectorDisplay = () => {
     const obj = PLAYER_OBJECTS[selectedObjectId];
-    document.getElementById("character-name").textContent = obj.name;
+
+    // 🛠️ UPDATE: Display character name or skin name if equipped
+    let displayCharName = obj.name;
+    const equippedItem = equippedSkin ? SHOP_ITEMS.find(item => item.id === equippedSkin) : null;
+    if (equippedItem && equippedItem.basedOn === selectedObjectId) {
+        displayCharName = equippedItem.name;
+    }
+    document.getElementById("character-name").textContent = displayCharName;
+
 
     const lockEl = document.getElementById("character-lock");
     const statusEl = document.getElementById("character-status");
@@ -726,10 +733,11 @@ function setupCharacterSelector() {
 
     // --- VISUAL FEEDBACK: Update border color and shadow dynamically ---
     if (obj.isUnlocked) {
-      previewEl.style.borderColor = "var(--neon-green)";
-      previewEl.style.boxShadow = "0 0 10px var(--neon-green)";
+      // *** MODIFIED to use a strong NEON PINK GLOW/BORDER (matches CSS theme) ***
+      previewEl.style.borderColor = "#F472B6"; // Neon Pink
+      previewEl.style.boxShadow = "0 0 20px #F472B6, 0 0 40px #C084FC"; // Pink core, Purple bloom
     } else {
-      // Set neutral color and shadow when locked
+      // Set neutral color and shadow when locked (keeping original gray/neutral)
       previewEl.style.borderColor = "#9ca3af";
       previewEl.style.boxShadow = "0 0 10px #9ca3af";
     }
@@ -789,21 +797,31 @@ function setupCharacterSelector() {
   console.log("Character selector setup complete");
 }
 
-// --- 3D MODEL CREATION FUNCTIONS (NO CHANGES) ---
+// --- 3D MODEL CREATION FUNCTIONS ---
 
-function createRocketModel() {
+function createRocketModel(skinOverride) {
   const modelGroup = new THREE.Group();
   const bodyTexture = textureCache["rocketBody"];
+  
+  // 🛠️ FIX: Apply skin color override if available
+  let bodyColor = bodyTexture ? 0xffffff : 0xbbbbbb; // Default body color
+  let accentColor = 0xcc3333; // Default accent color
+
+  if (skinOverride) {
+      bodyColor = skinOverride.color;
+      accentColor = skinOverride.color; // Use the same color for accents for simplicity
+  }
+  
   const materials = {
     body: new THREE.MeshStandardMaterial({
-      color: bodyTexture ? 0xffffff : 0xbbbbbb,
+      color: bodyColor, // Use custom color
       map: bodyTexture,
       metalness: 0.9,
       roughness: 0.7,
       flatShading: false,
     }),
     accent: new THREE.MeshStandardMaterial({
-      color: 0xcc3333,
+      color: accentColor, // Use custom color
       metalness: 0.5,
       roughness: 0.3,
       flatShading: false,
@@ -879,11 +897,18 @@ function createSaturnModel() {
   modelGroup.add(ring);
   return modelGroup;
 }
-function createAsteroidModel() {
+function createAsteroidModel(skinOverride) {
   const modelGroup = new THREE.Group();
   const surfaceTexture = textureCache["asteroidSurface"];
+  
+  // 🛠️ FIX: Apply skin color override if available
+  let meshColor = surfaceTexture ? 0xffffff : 0x555555;
+  if (skinOverride) {
+      meshColor = skinOverride.color;
+  }
+  
   const mat = new THREE.MeshStandardMaterial({
-    color: surfaceTexture ? 0xffffff : 0x555555,
+    color: meshColor, // Use custom color
     map: surfaceTexture,
     roughness: 1.0,
     metalness: 0.0,
@@ -1287,6 +1312,7 @@ function initGame() {
   const gameConfig = {
     playerSpeed: -0.15,
     spawnInterval: 25,
+    minSpawnInterval: 15, // 🛠️ NEW: Minimum distance between obstacles
     levelColors: {
       1: { bg: "#010103" },
       2: { bg: "#0c0a1f" },
@@ -1548,11 +1574,10 @@ function initGame() {
       
       // 🛠️ Check for equipped skin override for model creation
       let skinOverride = null;
-      if (equippedSkin && objData.createModel === createHyperCubeModel) {
-          const skinItem = SHOP_ITEMS.find(item => item.id === equippedSkin && item.basedOn === characterId);
-          if (skinItem) {
-              skinOverride = skinItem;
-          }
+      // Find the equipped skin object
+      const equippedItem = equippedSkin ? SHOP_ITEMS.find(item => item.id === equippedSkin) : null;
+      if (equippedItem && equippedItem.basedOn === characterId) {
+          skinOverride = equippedItem;
       }
 
       this.visualModel = objData.createModel(skinOverride); // Pass override to model creator
@@ -1574,6 +1599,8 @@ function initGame() {
       this.colliderBox = new THREE.Mesh(colliderGeo, colliderMat);
       this.add(this.colliderBox);
       this.orbitingObstacles = [];
+      // 🛠️ NEW: Ability activation flag for Saturn power
+      this.isActivatingAbility = false; 
     }
     update(grounds) {
       this.position.x += this.velocity.x;
@@ -1819,6 +1846,9 @@ class SatelliteWreckage {
         this.rotationSpeed = 0.005 + Math.random() * 0.005; // Tumbling speed
         this.isActive = true;
 
+        // 🛠️ MODIFIED: Scale down the entire group to make it smaller
+        this.group.scale.set(0.6, 0.6, 0.6); 
+
         // Create satellite parts with different geometries
         this.createSatelliteParts();
         
@@ -1975,8 +2005,7 @@ class SatelliteWreckage {
                     
                     // Solar cell grid with broken parts
                     vec2 grid = fract(vUv * vec2(8.0, 6.0));
-                    float cell = step(0.1, grid.x) * step(0.1, grid.y) * 
-                                 step(grid.x, 0.9) * step(grid.y, 0.9);
+                    float cell = step(0.1, grid.x) * step(0.1, grid.y) * step(grid.x, 0.9) * step(grid.y, 0.9);
                     
                     // Random broken cells
                     float cellHash = fract(sin(dot(floor(vUv * vec2(8.0, 6.0)), vec2(12.9898, 78.233))) * 43758.5453);
@@ -2363,18 +2392,15 @@ class SatelliteWreckage {
 }
 
 
-
-
-
-
-
+  // --- UPDATED OBSTACLE TYPES LIST ---
+  // UFO is index 4, QuantumGate is index 5
   const obstacleTypes = [
     AsteroidField,
     PlasmaShots,
     SatelliteWreckage, 
     EnergyField,
-    UFO,
-    QuantumGate,
+    UFO, // Index 4
+    QuantumGate, // Index 5
    
   ];
 
@@ -2474,16 +2500,19 @@ class SatelliteWreckage {
       case 1:
         gameConfig.playerSpeed = -0.08;
         gameConfig.spawnInterval = 25;
+        gameConfig.minSpawnInterval = 15;
         scene.background = new THREE.Color(gameConfig.levelColors[1].bg);
         break;
       case 2:
         gameConfig.playerSpeed = -0.12;
         gameConfig.spawnInterval = 22;
+        gameConfig.minSpawnInterval = 12;
         scene.background = new THREE.Color(gameConfig.levelColors[2].bg);
         break;
       case 3:
         gameConfig.playerSpeed = -0.16;
         gameConfig.spawnInterval = 18;
+        gameConfig.minSpawnInterval = 10;
         scene.background = new THREE.Color(gameConfig.levelColors[3].bg);
         break;
     }
@@ -2606,24 +2635,37 @@ class SatelliteWreckage {
 
   function spawnObstacle() {
     let availableObstacles;
+    
+    // 🛠️ MODIFIED: Ensure UFO (index 4) and Quantum Gate (index 5) are included in Level 3 spawning.
     if (selectedLevel === 1) {
        availableObstacles = obstacleTypes.slice(0, 3);
     } else if (selectedLevel === 2) {
-      availableObstacles = obstacleTypes.slice(0, 4);
+      availableObstacles = obstacleTypes.slice(0, 4); // Asteroid, Plasma, Satellite, EnergyField
+    } else if (selectedLevel === 3) {
+      // Level 3 should spawn up to QuantumGate (index 5)
+      availableObstacles = obstacleTypes.slice(0, 6); 
     } else {
-      const sliceEnd = Math.min(
-        gameState.internalLevel + 1,
-        obstacleTypes.length
-      );
-      availableObstacles = obstacleTypes.slice(0, sliceEnd);
+        // Default to spawning up to the internal level progression for max variety
+        const sliceEnd = Math.min(
+          gameState.internalLevel + 1,
+          obstacleTypes.length
+        );
+        availableObstacles = obstacleTypes.slice(0, sliceEnd);
     }
+    
     const oC =
       availableObstacles[Math.floor(Math.random() * availableObstacles.length)];
-    const sI = gameConfig.spawnInterval + (Math.random() - 0.5) * 15;
-    const p = new THREE.Vector3((Math.random() - 0.5) * 3, 0, lastSpawnZ - sI);
+    
+    // 🛠️ FIX: Ensure minSpawnInterval is respected
+    const maxInterval = gameConfig.spawnInterval;
+    const minInterval = gameConfig.minSpawnInterval;
+    // Calculate a random interval between min and max
+    const randomInterval = minInterval + Math.random() * (maxInterval - minInterval);
+
+    const p = new THREE.Vector3((Math.random() - 0.5) * 3, 0, lastSpawnZ - randomInterval);
     const nO = new oC(p);
     obstacles.push(nO);
-    lastSpawnZ -= sI;
+    lastSpawnZ = p.z; // Update lastSpawnZ to the new obstacle's Z position
   }
 
   // --- NEW: Collision Check for Stars ---
@@ -2880,16 +2922,15 @@ class SatelliteWreckage {
   window.addEventListener("keydown", (e) => {
     switch (e.code) {
       case "KeyA":
-      case "ArrowLeft":
+      case "ArrowLeft": // 🛠️ ADDED ARROW KEY
         keys.a.pressed = true;
         break;
       case "KeyD":
-      case "ArrowRight":
+      case "ArrowRight": // 🛠️ ADDED ARROW KEY
         keys.d.pressed = true;
         break;
       case "Space":
-      case "ArrowUp": //up for jumping as well
-
+      case "ArrowUp": // 🛠️ ADDED ARROW KEY
         if (player && player.onGround) {
           playSound("jump");
           player.velocity.y = 0.12;
@@ -2908,11 +2949,13 @@ class SatelliteWreckage {
   window.addEventListener("keyup", (e) => {
     switch (e.code) {
       case "KeyA":
-      case "ArrowLeft":
+      case "ArrowLeft": // 🛠️ ADDED ARROW KEY
         keys.a.pressed = false;
+        break; // Added break to stop fallthrough
       case "KeyD":
-      case "ArrowRight":
+      case "ArrowRight": // 🛠️ ADDED ARROW KEY
         keys.d.pressed = false;
+        break; // Added break to stop fallthrough
     }
   });
   window.addEventListener("resize", () => {
@@ -2926,18 +2969,48 @@ class SatelliteWreckage {
 
   // --- SINGULARITY ABILITY ---
   window.addEventListener("keydown", (e) => {
+    // 🛠️ MODIFIED: Added a cooldown check to prevent double-activation and only allow on Saturn
     if (
       e.code === "KeyQ" &&
       selectedObjectId === "planet" &&
-      !gameState.singularityUsed
+      !gameState.singularityUsed &&
+      !player.isActivatingAbility
     ) {
+      player.isActivatingAbility = true; // Set flag to prevent rapid fire
       activateSingularity();
+      // Clear the flag after a short delay (e.g., 500ms)
+      setTimeout(() => {
+          if (player) player.isActivatingAbility = false;
+      }, 500);
     }
   });
   let rippleEffect;
   function activateSingularity() {
     if (gameState.singularityUsed) return;
-    gameState.singularityUsed = true;
+    
+    // New array to track obstacles successfully pulled into orbit in this activation
+    const obstaclesToOrbit = []; 
+    
+    // 1. First, check for obstacles in the expanded range
+    obstacles.forEach((obstacle) => {
+      // 🛠️ INCREASED RANGE FROM 8 TO 15
+      const distance = player.position.distanceTo(obstacle.group.position);
+      if (distance < 15) { 
+        obstaclesToOrbit.push(obstacle);
+      }
+    });
+
+    // 2. Only activate if we found at least one target
+    if (obstaclesToOrbit.length === 0) {
+        // 🛠️ Do NOT set gameState.singularityUsed = true if nothing was hit.
+        // The ability is not consumed, allowing the player to try again.
+        console.log("Singularity failed: No obstacles in range.");
+        return; 
+    }
+    
+    // --- ABILITY ACTIVATED ---
+    gameState.singularityUsed = true; // Ability is now consumed
+    
     const rippleGeometry = new THREE.SphereGeometry(1, 32, 32);
     const rippleMaterial = new THREE.MeshBasicMaterial({
       color: 0x00ffff,
@@ -2963,20 +3036,21 @@ class SatelliteWreckage {
       }
     };
     animateRipple();
-    obstacles.forEach((obstacle) => {
-      const distance = player.position.distanceTo(obstacle.group.position);
-      if (distance < 8) {
-        player.orbitingObstacles.push(obstacle);
-        obstacle.group.position.set(0, 2, 0);
-        player.add(obstacle.group);
-        obstacle.group.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            child.material.emissive = new THREE.Color(0x00ffff);
-            child.material.emissiveIntensity = 0.5;
-          }
-        });
-      }
+    
+    // Move all obstacles found in range into the player's orbit
+    obstaclesToOrbit.forEach((obstacle, index) => { // Use the filtered list
+      player.orbitingObstacles.push(obstacle);
+      // Adjusted: use player's object to set orbiting position, not obstacle's group
+      obstacle.group.position.set(0, 2, 0); 
+      player.add(obstacle.group);
+      obstacle.group.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.material.emissive = new THREE.Color(0x00ffff);
+          child.material.emissiveIntensity = 0.5;
+        }
+      });
     });
+    
     setTimeout(() => {
       releaseOrbitingObstacles();
     }, 3000);
@@ -3116,9 +3190,15 @@ class SatelliteWreckage {
 
     if (player.position.y < -10) triggerGameOver("You fell into deep space!");
 
-    if (player.position.z < lastSpawnZ + 100) {
-      spawnObstacle();
+    // 🛠️ FIX: Corrected and simplified continuous spawning logic. 
+    // Spawn a new obstacle if the last spawned obstacle is closer to the player 
+    // than a large viewing distance threshold (e.g., 80 units).
+    const spawningViewDistance = -80; // Load new obstacles 80 units ahead
+    
+    if (lastSpawnZ > player.position.z + spawningViewDistance) {
+        spawnObstacle();
     }
+
 
 obstacles.forEach((o) => {
     o.update();
@@ -3132,7 +3212,8 @@ obstacles.forEach((o) => {
         if (o.group.position.z < player.position.z + 10) {
             const distance = o.group.position.distanceTo(player.position);
             // Use a reasonable collision distance that matches the satellite's size
-            if (distance < 4) {
+            // 🛠️ NOTE: The Satellite is scaled to 0.6, so the collision distance is smaller in game units
+            if (distance < 3) { 
                 console.log("Satellite collision! Distance:", distance);
                 triggerGameOver("You crashed into satellite wreckage!");
                 return;
@@ -3475,7 +3556,7 @@ window.claimQuestRewards = function () {
   playSound("click");
 
   console.log(
-    `Claimed ${totalStars} stars! New total: ${currentStars + totalStars}`
+    `Claimed ${totalStars} stars. New total: ${currentStars + totalStars}`
   );
 };
 
@@ -3598,6 +3679,11 @@ window.equipShopItem = function (itemId) {
   renderShopScreen();
   playSound("click");
   console.log(`Equipped: ${item.name}`);
+  
+  // 🛠️ FIX: Update the character preview when a skin is equipped
+  if (typeof updateCharacterSelectorDisplay === 'function') {
+      updateCharacterSelectorDisplay();
+  }
 };
 
 window.unequipSkin = function () {
@@ -3606,6 +3692,11 @@ window.unequipSkin = function () {
   renderShopScreen();
   playSound("click");
   console.log("Skin removed - using default appearance");
+
+  // 🛠️ FIX: Update the character preview when a skin is unequipped
+  if (typeof updateCharacterSelectorDisplay === 'function') {
+      updateCharacterSelectorDisplay();
+  }
 };
 
 // ---- QUEST PROGRESS UPDATE HOOKS ----

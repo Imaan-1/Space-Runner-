@@ -15,13 +15,13 @@
           <h2>🕹️ CONTROLS</h2>
           <div class="control-item">
             <span class="control-text">Move:</span>
-            <span class="control-input">A / D for Left / Right</span>
+            <span class="control-input">A / D or Left / Right Arrows</span>
           </div>
           <div class="control-item">
             <span class="control-text">Jump:</span>
-            <span class="control-input">SPACE BAR</span>
+            <span class="control-input">SPACE BAR or Up Arrow</span>
           </div>
-          <div class="control-item">
+          <div class="control-item special-power-control">
             <span class="control-text">Special Power:</span>
             <span class="control-input">Q (Wandering Saturn only)</span>
           </div>
@@ -33,7 +33,10 @@
             <span class="control-text">Restart Game:</span>
             <span class="control-input">R (After Game Over)</span>
           </div>
-        </div>
+          <p class="power-disclaimer">
+            <span class="disclaimer-icon">❗️</span> **Special Power is a one-time use per run.**
+          </p>
+          </div>
 
         <div class="levels-section">
           <h2>LEVELS</h2>
@@ -124,7 +127,6 @@
         <div id="starCountHUD">⭐ Collected: 0</div>
       </div>
 
-      <!-- THE MINIMAP RIGHT -->
       <div id="minimap-container">
         <canvas id="minimap"></canvas>
       </div>

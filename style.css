@@ -158,6 +158,26 @@ body {
     text-align: right;
 }
 
+/* --- NEW POWER DISCLAIMER STYLE --- */
+.power-disclaimer {
+    margin-top: 15px;
+    padding: 10px 15px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--neon-gold);
+    border-radius: 8px;
+    font-size: 0.95rem;
+    color: var(--neon-gold);
+    text-shadow: 0 0 5px rgba(255, 215, 0, 0.4);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.disclaimer-icon {
+    font-size: 1.2rem;
+    color: var(--neon-gold);
+}
+/* --- END NEW POWER DISCLAIMER STYLE --- */
+
 /* --- LEVEL SELECTORS & BUTTONS (Centering Fixes) --- */
 #level-selector-container {
   display: flex;
@@ -248,10 +268,12 @@ body {
     height: 200px; 
     border-radius: 50%;
     /* Default border color is gray/white, will be overridden to neon purple by JS when unlocked */
-    border: 3px solid #9ca3af; 
+    /* *** MODIFIED FOR PINK GLOW *** */
+    border: 3px solid var(--neon-pink); 
     background: transparent;
     /* Default shadow is gray/white, will be overridden to neon purple by JS when unlocked */
-    box-shadow: 0 0 10px #9ca3af;
+    /* *** MODIFIED FOR PINK GLOW *** */
+    box-shadow: 0 0 15px var(--neon-pink), 0 0 25px var(--neon-purple);
     display: block;
     z-index: 5;
 }
@@ -281,11 +303,13 @@ body {
 .char-arrow { 
     background: none; 
     border: none; 
-    color: var(--neon-purple); 
+    /* Original: color: var(--neon-purple); */
+    color: var(--neon-pink); /* MODIFIED: Change arrows to pink */
     font-size: 3rem; 
     cursor: pointer; 
     padding: 0 15px;
-    text-shadow: var(--neon-shadow); 
+    /* Original: text-shadow: var(--neon-shadow); */
+    text-shadow: 0 0 8px var(--neon-pink), 0 0 15px var(--neon-purple); /* MODIFIED: Enhance arrow shadow */
     /* FIXED: Increased Z-index to ensure arrows are above the character preview canvas (z-index: 5) */
     z-index: 15; 
 }
@@ -424,10 +448,12 @@ body {
 .char-select-modern #character-preview {
     width: 300px;
     height: 300px;
+    /* *** MODIFIED FOR PINK GLOW *** */
     border: 4px solid var(--neon-pink);
     box-shadow: 
-        0 0 30px var(--neon-purple),
-        0 0 60px rgba(192, 132, 252, 0.5);
+        0 0 30px var(--neon-pink), /* Core glow pink */
+        0 0 60px rgba(244, 114, 182, 0.8), /* Stronger pink glow */
+        0 0 90px var(--neon-purple); /* Outer glow purple */
 }
 
 .char-select-modern #lock-overlay {
