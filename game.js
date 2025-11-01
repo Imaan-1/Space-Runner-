@@ -118,7 +118,7 @@ const PLAYER_OBJECTS = {
     unlockLevel: 3,
     createModel: createOrbModel,
     colliderSize: { width: 1.4, height: 1.4, depth: 1.4 },
-    unlockText: "Score 1000 in Level 3",
+    unlockText: "Score 500 in Level 3", // 🛠️ MODIFIED UNLOCK TEXT
     trailColor: 0x00ffff, // Cyan
     trailSize: 0.15,
     trailMaterial: null,
@@ -131,7 +131,7 @@ const PLAYER_OBJECTS = {
     unlockLevel: 3,
     createModel: createHyperCubeModel,
     colliderSize: { width: 1.2, height: 1.2, depth: 1.2 },
-    unlockText: "Score 2000 in Level 3",
+    unlockText: "Score 1000 in Level 3", // 🛠️ MODIFIED UNLOCK TEXT
     trailColor: 0x66ff66, // LESS INTENSE NEON GREEN
     trailSize: 0.2,
     trailMaterial: null,
@@ -141,10 +141,10 @@ const PLAYER_OBJECTS = {
 let selectedObjectId = "rocket";
 const characterOrder = ["rocket", "asteroid", "planet", "orb", "hypercube"];
 
-// --- Level State Management (NO CHANGES) ---
+// --- Level State Management (MODIFIED) ---
 let selectedLevel = 1;
 const LEVEL_UNLOCK_SCORES = { 1: 500, 2: 1000, 3: Infinity };
-let unlockedLevels = { 1: true, 2: false, 3: true };
+let unlockedLevels = { 1: true, 2: false, 3: false }; // 🛠️ Level 3 now starts locked
 let highScores = { 1: 0, 2: 0, 3: 0 };
 
 // --- Load Unlocks from localStorage (NO CHANGES) ---
@@ -169,7 +169,7 @@ if (savedHighScores) {
   highScores = { ...highScores, ...savedHighScores };
 }
 
-// ---- QUEST & REWARD SYSTEM DATA ----
+// ---- QUEST & REWARD SYSTEM DATA (MODIFIED) ----
 const QUEST_TYPES = [
   {
     name: "Jump X times in one run",
@@ -191,65 +191,100 @@ const QUEST_TYPES = [
     progressText: (progress) => `Score: ${progress.score} / ${progress.target}`,
     reward: 10,
   },
+  // 🛠️ NEW QUEST: Score over X points in Y consecutive runs
   {
-    name: "Don't crash more than Z times in 5 runs",
-    key: "deaths",
-    min: 3,
-    max: 5,
+    name: "Score over X points in Y consecutive runs", // 🛠️ Updated template for clarity
+    key: "consecutiveScore",
+    scoreMin: 100,
+    scoreMax: 200,
+    streakMin: 2,
+    streakMax: 4,
     runOnly: false,
-    checker: (progress) => progress.deaths <= progress.target,
+    checker: (progress) => progress.currentStreak >= progress.targetStreak,
+    // 🛠️ MODIFIED: Removed redundant bracketed text
     progressText: (progress) =>
-      `Deaths: ${progress.deaths} / ${progress.target}`,
-    reward: 10,
+      `Streak: ${progress.currentStreak} / ${progress.targetStreak}`,
+    reward: 20, // Higher reward for a persistent challenge
   },
 ];
 
 function getRandomQuests(n = 3) {
   const chosen = [];
-  const used = new Set();
-  while (chosen.length < n && used.size < QUEST_TYPES.length) {
-    const i = Math.floor(Math.random() * QUEST_TYPES.length);
-    if (!used.has(i)) {
-      used.add(i);
-      const qt = QUEST_TYPES[i];
-      const target = Math.floor(Math.random() * (qt.max - qt.min + 1)) + qt.min;
-      const questData = {
-        ...qt,
-        target,
-        done: false,
-        jumps: 0,
-        score: 0,
-        deaths: 0,
-      };
-      chosen.push(questData);
+  const questTypesToUse = [...QUEST_TYPES];
+
+  while (chosen.length < n && questTypesToUse.length > 0) {
+    const randomIndex = Math.floor(Math.random() * questTypesToUse.length);
+    const qt = questTypesToUse.splice(randomIndex, 1)[0];
+    
+    let target = 0;
+    
+    // Default structure for quest data
+    const questData = {
+      ...qt,
+      target,
+      done: false,
+      jumps: 0,
+      score: 0,
+      currentStreak: 0, 
+      targetScore: 0,
+      targetStreak: 0,
+      lastRunPassed: false, // For consecutiveScore tracking
+    };
+
+    if (qt.key === "consecutiveScore") {
+        // Set properties for the consecutiveScore quest
+        questData.targetScore = Math.floor(Math.random() * (qt.scoreMax - qt.scoreMin + 1)) + qt.scoreMin;
+        questData.targetStreak = Math.floor(Math.random() * (qt.streakMax - qt.streakMin + 1)) + qt.streakMin;
+    } else {
+        // Set properties for other quests
+        questData.target = Math.floor(Math.random() * (qt.max - qt.min + 1)) + qt.min;
     }
+    
+    chosen.push(questData);
   }
   return chosen;
 }
 
+// 🛠️ FIX IMPLEMENTED HERE
 function loadDailyQuests() {
   let quests = JSON.parse(localStorage.getItem("spaceRunnerQuests"));
   let lastDay = localStorage.getItem("spaceRunnerQuestDay");
   const nowDay = new Date().toDateString();
+  
+  // Logic to reset quests if a new day starts or no quests are saved
   if (!quests || lastDay !== nowDay) {
     quests = getRandomQuests();
     localStorage.setItem("spaceRunnerQuests", JSON.stringify(quests));
     localStorage.setItem("spaceRunnerQuestDay", nowDay);
-    localStorage.setItem(
-      "spaceRunnerQuestRun",
-      JSON.stringify({ jumps: 0, deaths: 0, completed: false })
-    );
+    localStorage.removeItem("spaceRunnerQuestRewarded"); 
   } else {
+    // 🎯 FIX: Re-map the quest functions and ensure persistence fields exist.
     quests = quests.map((q) => {
       const questType = QUEST_TYPES.find((qt) => qt.key === q.key);
       if (questType) {
-        return { ...q, ...questType };
+        
+        // 1. Copy the executable functions from the constant (THE FIX!)
+        q.progressText = questType.progressText;
+        q.checker = questType.checker;
+        
+        // 2. Ensure all dynamic properties for new quest types are explicitly set if missing
+        if (questType.key === "consecutiveScore") {
+            // These properties must be re-initialized if missing, but their current value preserved if they exist.
+            q.targetScore = q.targetScore || questType.scoreMin;
+            q.targetStreak = q.targetStreak || questType.streakMin;
+            q.currentStreak = q.currentStreak || 0;
+            q.lastRunPassed = q.lastRunPassed || false;
+        }
+        
+        // Return the modified object
+        return q;
       }
       return q;
     });
   }
   return quests;
 }
+
 
 function saveDailyQuests(quests) {
   localStorage.setItem("spaceRunnerQuests", JSON.stringify(quests));
@@ -519,12 +554,12 @@ function setupMenu() {
       const levelNum = parseInt(level);
       if (unlockedLevels[levelNum]) {
         btn.disabled = false;
-        btn.innerHTML = `LEVEL ${levelNum}: ${getLevelName(levelNum)}`;
+        // 🛠️ MODIFIED: Removed level name
+        btn.innerHTML = `LEVEL ${levelNum}`;
       } else {
         btn.disabled = true;
-        btn.innerHTML = `LEVEL ${levelNum}: ${getLevelName(
-          levelNum
-        )} <span>🔒</span>`;
+        // 🛠️ MODIFIED: Removed level name
+        btn.innerHTML = `LEVEL ${levelNum} <span>🔒</span>`;
       }
       if (levelNum === selectedLevel) {
         btn.classList.add("selected");
@@ -565,17 +600,9 @@ function setupMenu() {
     }
   };
 
+  // 🛠️ MODIFIED: Removed level names entirely
   function getLevelName(level) {
-    switch (level) {
-      case 1:
-        return "ASTEROID FIELD";
-      case 2:
-        return "NEBULA DRIFT";
-      case 3:
-        return "PLANETARY RING";
-      default:
-        return `Level ${level}`;
-    }
+    return "";
   }
 
   levelBtns[1].addEventListener("click", () => {
@@ -2464,6 +2491,29 @@ class SatelliteWreckage {
   }
   // --- END FIXED: STAR SPAWN LOGIC ---
 
+  // --- NEW: Function to update the Star Counter HUD ---
+  function updateStarCounterHUD() {
+    const starCount = localStorage.getItem("spaceRunnerStars") || "0";
+    const starElement = document.getElementById("stars-count");
+    if (starElement) {
+      starElement.textContent = starCount;
+    }
+    const starHUD = document.getElementById("starCountHUD");
+    if (starHUD) {
+      starHUD.textContent = `⭐ Collected: ${starCount}`;
+    }
+  }
+  // --- END NEW: Function to update the Star Counter HUD ---
+  
+  // 🛠️ NEW: Run-specific quest tracking for the Consecutive Score quest
+  let runQuestTracker = {
+      isConsecutiveScoreQuestActive: false,
+      isNoJumpQuestActive: false,
+      didPassScoreThreshold: false,
+      didJump: false,
+      didUseAbility: false
+  };
+
   function setupNewGame() {
     isPaused = false;
     // FIX: Ensure pause screens are hidden at start
@@ -2481,6 +2531,13 @@ class SatelliteWreckage {
 
     // Reset run-only quest progress
     resetQuestProgressForRun();
+    
+    // 🛠️ NEW: Identify and track run-specific quests for this game instance
+    runQuestTracker.isConsecutiveScoreQuestActive = dailyQuests.some(q => q.key === "consecutiveScore" && !q.done);
+    runQuestTracker.didPassScoreThreshold = false; // Reset for new run
+    runQuestTracker.didJump = false; // Reset for new run
+    runQuestTracker.didUseAbility = false; // Reset for new run
+
 
     // Reset minimap history
     minimap.playerHistory = [];
@@ -2730,9 +2787,9 @@ class SatelliteWreckage {
     if (starSpawnInterval) clearInterval(starSpawnInterval);
     // --- END NEW: Stop Shooting Star Spawner and Star Spawner ---
 
-    // Track quest progress for death and score
-    updateQuestProgress("deaths");
-    updateQuestProgress("score", gameState.score);
+    // 🛠️ NEW: Update quest progress based on the final score
+    updateQuestProgressOnGameOver(gameState.score);
+
 
     pauseButton.style.display = "none"; // NEW
     pauseScreen.style.display = "none"; // NEW
@@ -2935,6 +2992,7 @@ class SatelliteWreckage {
           playSound("jump");
           player.velocity.y = 0.12;
           updateQuestProgress("jump"); // Track jump for quests
+          runQuestTracker.didJump = true; // 🛠️ NEW: Track jump for no ability quest
         }
         break;
       case "KeyR":
@@ -2978,6 +3036,7 @@ class SatelliteWreckage {
     ) {
       player.isActivatingAbility = true; // Set flag to prevent rapid fire
       activateSingularity();
+      runQuestTracker.didUseAbility = true; // 🛠️ NEW: Track ability use
       // Clear the flag after a short delay (e.g., 500ms)
       setTimeout(() => {
           if (player) player.isActivatingAbility = false;
@@ -3005,6 +3064,8 @@ class SatelliteWreckage {
         // 🛠️ Do NOT set gameState.singularityUsed = true if nothing was hit.
         // The ability is not consumed, allowing the player to try again.
         console.log("Singularity failed: No obstacles in range.");
+        // We set didUseAbility flag *before* this check, so we must reset it if ability was not consumed.
+        runQuestTracker.didUseAbility = false; 
         return; 
     }
     
@@ -3241,6 +3302,14 @@ obstacles.forEach((o) => {
     if (!gameState.isGameOver) {
       gameState.score = Math.floor(-player.position.z);
       document.getElementById("score").innerText = `Score: ${gameState.score}`;
+      
+      // 🛠️ NEW: Update didPassScoreThreshold for the consecutive score quest
+      dailyQuests.filter(q => q.key === "consecutiveScore" && !q.done).forEach(q => {
+          if (gameState.score >= q.targetScore) {
+              runQuestTracker.didPassScoreThreshold = true;
+          }
+      });
+
 
       if (gameState.score > highScores[selectedLevel]) {
         if (!gameState.highScoreNotified && gameState.startingHighScore > 0) {
@@ -3339,11 +3408,11 @@ obstacles.forEach((o) => {
         }
       }
 
-      // Check for Orb Unlock (from Level 3, score 1000)
+      // 🛠️ MODIFIED: Check for Orb Unlock (from Level 3, score 500)
       if (
         selectedLevel === 3 &&
         !PLAYER_OBJECTS["orb"].isUnlocked &&
-        gameState.score >= 1000
+        gameState.score >= 500
       ) {
         PLAYER_OBJECTS["orb"].isUnlocked = true;
         const unlocked = JSON.parse(
@@ -3361,11 +3430,11 @@ obstacles.forEach((o) => {
         setTimeout(() => uN.classList.remove("show"), 3000);
       }
 
-      // Check for Hyper Cube Unlock (from Level 3, score 2000)
+      // 🛠️ MODIFIED: Check for Hyper Cube Unlock (from Level 3, score 1000)
       if (
         selectedLevel === 3 &&
         !PLAYER_OBJECTS["hypercube"].isUnlocked &&
-        gameState.score >= 2000
+        gameState.score >= 1000
       ) {
         PLAYER_OBJECTS["hypercube"].isUnlocked = true;
         const unlocked = JSON.parse(
@@ -3490,13 +3559,21 @@ function renderQuestScreen() {
   quests.forEach((q) => {
     const questClass = q.done ? "quest-item completed" : "quest-item";
     const isClaimed = q.claimed !== false;
+    
+    // 🛠️ MODIFIED: Dynamic quest title replacement (FIXED TEMPLATE LOGIC)
+    let title = q.name;
+    if (q.key === "consecutiveScore") {
+        // Use targetScore and targetStreak for the name template
+        title = `Score over ${q.targetScore} points in ${q.targetStreak} consecutive runs`;
+    } else {
+        // Use standard target for other quests
+        title = title.replace(/ X | Y | Z /g, ` ${q.target} `);
+    }
+    // ------------------------------------------
 
     html += `<div class="${questClass}">`;
-    html += `<div class="quest-title">${q.name.replace(
-      / X | Y | Z /g,
-      ` ${q.target} `
-    )}</div>`;
-    html += `<div class="quest-progress">${q.progressText(q)}</div>`;
+    html += `<div class="quest-title">${title}</div>`; 
+    html += `<div class="quest-progress">${q.progressText(q)}</div>`; 
     if (q.done) {
       if (isClaimed) {
         html += `<div class="quest-completed-badge">✓ CLAIMED (+${q.reward} ⭐)</div>`;
@@ -3699,7 +3776,7 @@ window.unequipSkin = function () {
   }
 };
 
-// ---- QUEST PROGRESS UPDATE HOOKS ----
+// ---- QUEST PROGRESS UPDATE HOOKS (MODIFIED) ----
 function updateQuestProgress(type, value) {
   let newlyCompleted = false;
   dailyQuests.forEach((q) => {
@@ -3707,19 +3784,13 @@ function updateQuestProgress(type, value) {
       const wasDone = q.done;
       if (type === "jump") {
         q.jumps = (q.jumps || 0) + 1;
-        if (q.jumps >= q.target) {
-          q.done = true;
-        }
       } else if (type === "score") {
         q.score = Math.max(q.score || 0, value);
-        if (q.score >= q.target) {
-          q.done = true;
-        }
-      } else if (type === "deaths") {
-        q.deaths = (q.deaths || 0) + 1;
-        if (q.deaths <= q.target) {
-          q.done = true;
-        }
+      }
+      
+      // Check completion status for run-only quests now
+      if (q.runOnly && q.checker(q)) {
+        q.done = true;
       }
 
       if (!wasDone && q.done) {
@@ -3743,6 +3814,52 @@ function updateQuestProgress(type, value) {
   saveDailyQuests(dailyQuests);
 }
 
+// 🛠️ NEW: Function to handle quest updates after the run ends
+function updateQuestProgressOnGameOver(finalScore) {
+    let newlyCompleted = false;
+    dailyQuests.forEach(q => {
+        if (!q.done) {
+            const wasDone = q.done;
+
+            if (q.key === "score") {
+                // Update simple score quest (Max score in one run)
+                q.score = Math.max(q.score || 0, finalScore);
+                if (q.checker(q)) q.done = true;
+            } else if (q.key === "consecutiveScore") {
+                // Update consecutive score quest
+                const passed = finalScore >= q.targetScore;
+
+                if (passed) {
+                    q.currentStreak = (q.currentStreak || 0) + 1;
+                    q.lastRunPassed = true;
+                } else {
+                    // Fail: reset streak to 0 but keep lastRunPassed false
+                    q.currentStreak = 0;
+                    q.lastRunPassed = false;
+                }
+                
+                if (q.checker(q)) q.done = true;
+            }
+            
+            if (!wasDone && q.done) {
+                newlyCompleted = true;
+                q.claimed = false;
+                console.log(`Quest completed! Claim your ${q.reward} stars!`);
+                showQuestCompleteNotification();
+            }
+        }
+    });
+
+    if (newlyCompleted) {
+        const allDone = dailyQuests.every(q => q.done);
+        if (allDone && !localStorage.getItem("spaceRunnerQuestRewarded")) {
+            console.log("All quests completed! Claim your +30 bonus stars!");
+        }
+    }
+    saveDailyQuests(dailyQuests);
+}
+
+
 function showQuestCompleteNotification() {
   const notification = document.getElementById("quest-complete-notification");
   if (!notification) return;
@@ -3761,6 +3878,15 @@ function resetQuestProgressForRun() {
     if (q.runOnly && !q.done) {
       q.jumps = 0;
       q.score = 0;
+    }
+    // 🛠️ NEW: Handle streak decay for consecutiveScore quests
+    if (q.key === "consecutiveScore" && !q.done) {
+        // If the player started a new run without clearing the previous one, the streak resets
+        if (q.currentStreak > 0 && !q.lastRunPassed) {
+             q.currentStreak = 0;
+        }
+        // Always reset this flag for the current run. It's updated on Game Over.
+        q.lastRunPassed = false; 
     }
   });
   saveDailyQuests(dailyQuests);
