@@ -19,8 +19,8 @@ Survive for as long as you can and achieve the highest score!
 
 | Key | Action |
 |-----|---------|
-| **A / D** | Move Left / Right |
-| **SPACE** | Jump |
+| **A / D** or **Left / Right Arrows** | Move Left / Right |
+| **SPACE** or **Up Arrow** | Jump |
 | **R** | Restart Game |
 | **V** | Switch View |
 | **Q** | Special Power for Planet |
@@ -52,7 +52,7 @@ Survive for as long as you can and achieve the highest score!
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/Imaan-1/Maze.git
+   git clone https://github.com/Imaan-1/Space-Runner-.git
    cd Maze
    ```
 2. **Install dependencies:**
